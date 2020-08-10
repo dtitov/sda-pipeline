@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/md5" // #nosec
 	"crypto/sha256"
 	"encoding/json"
@@ -42,6 +41,39 @@ type Verified struct {
 type Checksums struct {
 	Type  string `json:"type"`
 	Value string `json:"value"`
+}
+
+type headerReader struct {
+	header     []byte
+	dataReader io.Reader
+	offset     int
+}
+
+func newHeaderReader(headerData []byte, dataStream io.Reader) (h *headerReader) {
+
+	h = new(headerReader)
+	h.header = headerData
+	h.dataReader = dataStream
+	h.offset = 0
+
+	return h
+}
+
+func (h *headerReader) Read(p []byte) (n int, err error) {
+
+	if h.offset < len(h.header) {
+		// Data left in header
+		if len(p) == 0 {
+			return 0, fmt.Errorf("No place to read to!")
+		}
+
+		copied := copy(p, h.header[h.offset:])
+		h.offset += copied
+
+		return copied, nil
+	}
+
+	return h.dataReader.Read(p)
 }
 
 func main() {
@@ -126,14 +158,9 @@ func main() {
 				continue
 			}
 
-			var buf bytes.Buffer
-			buf.Write(header)
-			rw := io.ReadWriter(&buf)
-			if _, e := io.Copy(rw, f); e != nil {
-				log.Error(e)
-			}
+			var hr *headerReader = newHeaderReader(header, f)
 
-			c4ghr, err := streaming.NewCrypt4GHReader(rw, key, nil)
+			c4ghr, err := streaming.NewCrypt4GHReader(hr, key, nil)
 			if err != nil {
 				log.Error(err)
 			}
@@ -142,6 +169,7 @@ func main() {
 			sha256hash := sha256.New()
 
 			stream := io.TeeReader(c4ghr, md5hash)
+
 			if _, err := io.Copy(sha256hash, stream); err != nil {
 				log.Error(err)
 			}
