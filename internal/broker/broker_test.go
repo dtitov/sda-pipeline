@@ -2,6 +2,7 @@ package broker
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/streadway/amqp"
@@ -34,4 +35,19 @@ func TestDialer(t *testing.T) {
 
 	b.Channel = &c
 	GetMessages(&b, "hej")
+}
+
+func TestConfirmOne(t *testing.T) {
+
+	// Maybe we want to check log messages?
+	var wg sync.WaitGroup
+	wg.Add(1)
+	c := make(chan amqp.Confirmation)
+	go func(c <-chan amqp.Confirmation) {
+		confirmOne(c)
+		wg.Done()
+	}(c)
+	c <- amqp.Confirmation{}
+
+	wg.Wait()
 }
